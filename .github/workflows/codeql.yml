@@ -1,44 +1,61 @@
-# Actividad 3.2.4 – Análisis de seguridad con CodeQL
+# Actividad 3.2.4 – Pasos 6 y 7: dependencias entre jobs (needs) y continuar en caso de error
 name: "CodeQL"
 
 on:
   push:
     branches: [ "master" ]
-  pull_request:            # <- evento que hace que corra al abrir un PR hacia master
+  pull_request:
     branches: [ "master" ]
-  schedule:
-    - cron: '24 18 * * 1'  # además, cada lunes
 
 jobs:
+  # Job 1: lint. Si falla, NO detiene el workflow gracias a continue-on-error.
+  lint:
+    name: Lint TypeScript
+    runs-on: ubuntu-latest
+    continue-on-error: true          # Paso 7 (a nivel de job)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci || npm install
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true      # Paso 7 (a nivel de step)
+
+  # Job 2: CodeQL. Espera a que termine "lint".
   analyze:
     name: Analyze (${{ matrix.language }})
+    needs: lint                      # Paso 6: dependencia entre jobs
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     permissions:
-      security-events: write   # necesario para subir resultados a Code Scanning
+      security-events: write
       packages: read
       actions: read
       contents: read
-
     strategy:
       fail-fast: false
       matrix:
         include:
           - language: javascript-typescript
             build-mode: none
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # queries: security-extended,security-and-quality
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
+
+  # Job 3: resumen. Corre siempre, aunque los anteriores fallen.
+  resumen:
+    name: Resumen
+    needs: [lint, analyze]           # Paso 6: depende de dos jobs
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Resultado lint:   ${{ needs.lint.result }}"
+          echo "Resultado CodeQL: ${{ needs.analyze.result }}"
