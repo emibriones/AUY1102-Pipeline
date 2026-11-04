@@ -22,6 +22,11 @@ jobs:
       - name: Lint
         run: npm run lint
         continue-on-error: true      # Paso 7 (a nivel de step)
+      - name: Simular error (demo paso 7)
+        run: |
+          echo "Este paso falla a propósito para demostrar continue-on-error"
+          exit 1
+        continue-on-error: true      # el workflow sigue aunque este paso falle
 
   # Job 2: CodeQL. Espera a que termine "lint".
   analyze:
